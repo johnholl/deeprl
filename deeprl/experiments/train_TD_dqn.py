@@ -5,6 +5,7 @@ from deeprl.helpers.td_matrix_generators import DQN_TD_matrix
 import numpy as np
 from threading import Thread
 from optparse import OptionParser
+import random
 
 
 # parse command line options
@@ -32,7 +33,7 @@ TRAIN_EPISODES = options.TRAIN_EPISODES
 
 relations, credit = DQN_TD_matrix(4)
 
-dqn = TDNet(relations, credit, rom=ROM)
+dqn = TDNet(relations, credit, 1, rom=ROM)
 
 target_weights = dqn.sess.run(dqn.answer_network.weights)
 episode_step_count = []
@@ -57,8 +58,13 @@ while total_steps < 20000000:
         dqn.update_replay_memory((state, action, reward, new_state, terminal))
         state = new_state
 
-        if len(dqn.replay_memory) >= 40000 and total_steps % 4 == 0:
-            loss_val = dqn.learning_step(target_weights, BATCH_SIZE)
+        if len(dqn.replay_memory) >= 1000 and total_steps % 4 == 0:
+            minibatch = random.sample(dqn.replay_memory, BATCH_SIZE)
+            expanded_minibatch = []
+            for i in range(len(minibatch)):
+                minibatch[i] = minibatch[i] + ([minibatch[i][2]],)
+
+            loss_val = dqn.learning_step(target_weights, minibatch)
             loss_vals.append(loss_val)
 
         if total_steps % 10000 == 0:

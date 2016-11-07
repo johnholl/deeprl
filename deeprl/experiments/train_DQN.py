@@ -4,6 +4,7 @@ from deeprl.helpers.checkpointing import save_data
 import numpy as np
 from threading import Thread
 from optparse import OptionParser
+import random
 
 
 # parse command line options

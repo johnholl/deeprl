@@ -8,19 +8,22 @@ from deeprl.networks.convolutional_network import Convnet
 
 class TDNet:
 
-    def __init__(self, relations, credits, rom='/home/john/code/pythonfiles/my_dqn/Breakout.bin',
+    def __init__(self, relations, credits, k, rom='/home/john/code/pythonfiles/my_dqn/Breakout.bin',
                  save_path="/saved_models/TD.ckpt", load_path=""):
 
         self.save_path = save_path
         self.load_path = load_path
+
+
 
         self.rom = rom
         self.sess = tf.Session()
         self.env = AtariEnvironment(self.rom)
         self.relations = tf.constant(relations, tf.float32)
         self.credits = credits
+        self.k = k
         self.dim = len(relations)
-        self.nodes, self.node_targets = self.initialize_question_network()
+        self.prediction_nodes, self.environment_nodes, self.nodes, self.node_targets = self.initialize_question_network()
         self.answer_network = self.initialize_answer_network()
         self.loss, self.train_operation, self.credit_vector = self.initialize_learning_procedure()
 
@@ -41,17 +44,19 @@ class TDNet:
             print("No model provided.")
 
     def initialize_question_network(self):
-        nodes = tf.placeholder(tf.float32, shape=[None, self.dim])
-        node_targets = tf.matmul(nodes, self.relations)
-        return nodes, node_targets
+        prediction_nodes = tf.placeholder(tf.float32, shape=[None, self.dim - self.k])
+        environment_nodes = tf.placeholder(tf.float32, shape=[None, self.k])
+        nodes = tf.concat(1, (environment_nodes, prediction_nodes))
+        node_targets = tf.expand_dims(tf.matmul(nodes, self.relations), 1)
+        return prediction_nodes, environment_nodes, nodes, node_targets
 
     def initialize_answer_network(self):
-        answer_network = Convnet(self.dim, self.sess)
+        answer_network = Convnet(self.dim - self.k, self.sess)
         return answer_network
 
     def initialize_learning_procedure(self):
-        credit_vector = tf.placeholder(tf.float32, shape=[self.dim, 1])
-        action_readout = tf.matmul(self.node_targets, credit_vector)
+        credit_vector = tf.placeholder(tf.float32, shape=[None, self.dim - self.k, 1])
+        action_readout = tf.batch_matmul(self.node_targets, credit_vector)
         loss = tf.reduce_mean(tf.square(tf.sub(action_readout, self.answer_network.output)))
         optimizer = tf.train.RMSPropOptimizer(0.00025, decay=0.95, epsilon=0.01)
         gradients_and_vars = optimizer.compute_gradients(loss)
@@ -84,17 +89,20 @@ class TDNet:
 
         return prob, step_action, step_reward, new_state, obs2, obs3, obs4, processed_obs, Q_vals.max(), step_done
 
-    def learning_step(self, target_weights, batch_size):
-            minibatch = random.sample(self.replay_memory, batch_size)
+    def learning_step(self, target_weights, minibatch):
             next_states = np.array([m[3] for m in minibatch])
             feed_dict = {self.answer_network.input: next_states}
             feed_dict.update(zip(self.answer_network.weights, target_weights))
             predictions = self.sess.run(self.answer_network.output, feed_dict=feed_dict)
-            targets = self.sess.run(self.node_targets, feed_dict={self.nodes: predictions})
+            environment_values = np.array([m[5] for m in minibatch])
+            targets = self.sess.run(self.node_targets, feed_dict={self.prediction_nodes: predictions,
+                                                                  self.environment_nodes: environment_values})
             action_indexes = [m[1] for m in minibatch]
             states = [m[0] for m in minibatch]
+            credit_batch = np.array([self.credits[:, index] for index in action_indexes])
+            credit_batch = np.expand_dims(credit_batch, 2)
             feed_dict = {self.answer_network.input: np.array(states), self.node_targets: targets,
-                         self.credit_vector: [credits[:, index] for index in action_indexes]}
+                         self.credit_vector: credit_batch}
             _, loss_val = self.sess.run(fetches=(self.train_operation, self.loss), feed_dict=feed_dict)
 
             return loss_val

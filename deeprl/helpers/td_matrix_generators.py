@@ -3,14 +3,13 @@ import numpy as np
 
 # relation and credit matrices for a DQN where action space size is n. n+1st node is value function,
 # n+2nd node is reward function
-def DQN_TD_matrix(n, discount_factor = .99):
-    relations = np.zeros(shape=(n+2, n+2))
-    for i in range(1, n+2):
+def DQN_TD_matrix(n, discount_factor=.99):
+    relations = np.zeros(shape=(n+2, n+1))
+    for i in range(0, n+1):
         relations[0][i] = 1.
         relations[1][i] = discount_factor
 
-    credit = np.zeros(shape=(1,n))
-    credit = np.concatenate((credit, np.ones(shape=(1,n))), axis=0)
+    credit = np.ones(shape=(1,n))
     credit = np.concatenate((credit, np.eye(n, n)), axis=0)
 
     return relations, credit
@@ -34,10 +33,5 @@ def action_conditional_tree(n, l=1):
     return relations, credit
 
 # combining two question networks
-
-
-r, c = DQN_TD_matrix(4)
-print c
-
 
 
